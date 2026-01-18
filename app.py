@@ -92,11 +92,11 @@ if df_clean is not None:
         * **Impact:** Massive infrastructure collapse, loss of green cover.
         """)
         # Ensure 'Puri.tif.jpg' is in your GitHub repo root
-        img = load_image("Puri.tif.jpg") 
+        img = load_image("Puri_compressed.jpg") 
         if img:
             st.image(img, caption="Damage in Puri", use_container_width=True)
         else:
-            st.error("Image 'Puri.tif.jpg' not found in repository.")
+            st.error("Image 'Puri_compressed.jpg' not found in repository.")
 
     # --- TABS ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(['Overview', 'Stats', 'Density', 'Map', 'SQL Playground'])
