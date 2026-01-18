@@ -10,14 +10,22 @@ from PIL import Image
 st.set_page_config(page_title="Cyclone Dashboard", layout="wide")
 
 # ==========================================
-# 1. IMAGE COMPRESSION & PRE-PROCESSING
+# 1. IMAGE LOADING LOGIC
 # ==========================================
-# Note: On Render, we usually don't process hardcoded paths like /content/.
-# We assume images are in the project folder.
 @st.cache_resource
-def load_image(image_path):
-    if os.path.exists(image_path):
-        return Image.open(image_path)
+def load_image():
+    """
+    Tries to load the image. Prioritizes the compressed version 
+    to be faster and stay under GitHub limits.
+    """
+    possible_names = ["Puri_compressed.jpg", "Puri.tif.jpg", "Puri.tif"]
+    
+    for name in possible_names:
+        if os.path.exists(name):
+            try:
+                return Image.open(name)
+            except Exception:
+                continue
     return None
 
 # ==========================================
@@ -34,12 +42,15 @@ def load_data():
             break
     
     if not file_path:
-        return None, "Data file not found. Please upload 'Cyclone.xlsx' to the repo."
+        return None, "Data file not found. Please upload 'Cyclone.xlsx' to your GitHub repository."
 
     try:
-        if file_path.endswith('.csv'): df = pd.read_csv(file_path)
-        else: df = pd.read_excel(file_path)
+        if file_path.endswith('.csv'): 
+            df = pd.read_csv(file_path)
+        else: 
+            df = pd.read_excel(file_path)
 
+        # Standardize column names
         rename_map = {
             'Maximum Sustained Surface Wind (km/hr) ': 'Max_Wind_Speed',
             'Estimated Central Pressure (hPa) [or "E.C.P"]': 'Pressure',
@@ -60,7 +71,7 @@ def load_data():
 df_clean, msg = load_data()
 
 # ==========================================
-# 3. DASHBOARD LOGIC
+# 3. DASHBOARD UI
 # ==========================================
 st.title("🌪️ Ultimate Cyclone Dashboard")
 
@@ -68,7 +79,10 @@ if df_clean is not None:
     # --- SIDEBAR CONTROLS ---
     st.sidebar.header("Filter Settings")
     
-    unique_names = ['All'] + sorted(df_clean['Name'].dropna().unique().tolist())
+    # Handle cleaning of Names to prevent errors
+    clean_names = df_clean['Name'].dropna().unique().tolist()
+    unique_names = ['All'] + sorted([str(x) for x in clean_names])
+    
     selected_name = st.sidebar.selectbox("Select Cyclone", unique_names)
     
     min_wind = int(df_clean['Max_Wind_Speed'].min())
@@ -76,74 +90,98 @@ if df_clean is not None:
     
     wind_range = st.sidebar.slider("Wind Speed Range (km/h)", min_wind, max_wind, (min_wind, max_wind))
 
-    # Filter Data
+    # Filter Data based on selection
     mask = (df_clean['Max_Wind_Speed'] >= wind_range[0]) & (df_clean['Max_Wind_Speed'] <= wind_range[1])
     df_filtered = df_clean[mask]
     
     if selected_name != 'All':
         df_filtered = df_filtered[df_filtered['Name'] == selected_name]
 
-    # --- DAMAGE REPORT BUTTON ---
+    # --- DAMAGE REPORT SECTION ---
     if st.sidebar.button("📸 View Puri Damage Report"):
         st.subheader("🌪️ Impact: Puri 2019 Fani Cyclone")
         st.markdown("""
         **Cyclone Fani** was one of the strongest tropical cyclones to hit Odisha.
         * **Wind Speed:** 205 km/h
-        * **Impact:** Massive infrastructure collapse, loss of green cover.
+        * **Impact:** Massive infrastructure collapse, loss of green cover, and heritage damage.
         """)
-        # Ensure 'Puri.tif.jpg' is in your GitHub repo root
-        img = load_image("Puri.tif.jpg") 
+        
+        img = load_image()
         if img:
             st.image(img, caption="Damage in Puri", use_container_width=True)
         else:
-            st.error("Image 'Puri.tif.jpg' not found in repository.")
+            st.warning("Image file (Puri_compressed.jpg) not found in the repository.")
 
-    # --- TABS ---
+    # --- MAIN TABS ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs(['Overview', 'Stats', 'Density', 'Map', 'SQL Playground'])
 
+    # 1. OVERVIEW TAB
     with tab1:
         st.subheader("Cyclone Overview")
         col1, col2 = st.columns(2)
         
-        # 1. Trajectory
+        # Trajectory Path
         fig1, ax1 = plt.subplots()
         sns.scatterplot(data=df_filtered, x='Lon', y='Lat', hue='Name', ax=ax1, palette='viridis', legend=False)
         ax1.set_title("Trajectory Path")
         col1.pyplot(fig1)
 
-        # 2. Grade Count
+        # Grade Count
         if 'Grade' in df_filtered.columns:
             fig2, ax2 = plt.subplots()
             sns.countplot(data=df_filtered, y='Grade', ax=ax2, palette='magma', order=df_filtered['Grade'].value_counts().index)
             ax2.set_title("Intensity Grade Distribution")
             col2.pyplot(fig2)
 
+    # 2. STATS TAB
     with tab2:
         if 'Grade' in df_filtered.columns:
             st.subheader("Wind Speed by Grade")
             fig, ax = plt.subplots(figsize=(10, 6))
-            order = df_filtered.groupby('Grade')['Max_Wind_Speed'].median().sort_values().index
-            sns.boxenplot(data=df_filtered, x='Grade', y='Max_Wind_Speed', order=order, palette='cool', ax=ax)
-            plt.xticks(rotation=45)
-            st.pyplot(fig)
+            try:
+                order = df_filtered.groupby('Grade')['Max_Wind_Speed'].median().sort_values().index
+                sns.boxenplot(data=df_filtered, x='Grade', y='Max_Wind_Speed', order=order, palette='cool', ax=ax)
+                plt.xticks(rotation=45)
+                st.pyplot(fig)
+            except Exception as e:
+                st.info("Not enough data to generate statistics.")
 
+    # 3. DENSITY TAB
     with tab3:
         st.subheader("Geospatial Density")
         fig, ax = plt.subplots(figsize=(10, 6))
-        sns.kdeplot(data=df_filtered, x='Lon', y='Lat', fill=True, cmap='Reds', alpha=0.5, ax=ax)
-        sns.scatterplot(data=df_filtered, x='Lon', y='Lat', size='Max_Wind_Speed', hue='Max_Wind_Speed', palette='viridis', ax=ax)
-        st.pyplot(fig)
+        try:
+            sns.kdeplot(data=df_filtered, x='Lon', y='Lat', fill=True, cmap='Reds', alpha=0.5, ax=ax)
+            sns.scatterplot(data=df_filtered, x='Lon', y='Lat', size='Max_Wind_Speed', hue='Max_Wind_Speed', palette='viridis', ax=ax)
+            st.pyplot(fig)
+        except Exception:
+            st.info("Not enough data points for density plot.")
         
+    # 4. MAP TAB (FIXED HERE)
     with tab4:
         st.subheader("Geographical Map")
-        st.map(df_filtered[['Lat', 'Lon']]) # Streamlit has a built-in map function
+        if not df_filtered.empty:
+            # We explicitly rename columns to lowercase 'lat' and 'lon' 
+            # because Streamlit map function is case-sensitive.
+            map_data = df_filtered[['Lat', 'Lon']].rename(columns={'Lat': 'lat', 'Lon': 'lon'})
+            st.map(map_data)
+        else:
+            st.write("No data available for map.")
 
+    # 5. SQL TAB
     with tab5:
         st.subheader("🔍 SQL Playground")
         
         # Setup In-Memory SQL
         conn = sqlite3.connect(':memory:')
-        df_filtered.to_sql('cyclones', conn, index=False, if_exists='replace')
+        
+        # Convert objects to strings to prevent SQL errors
+        df_sql = df_filtered.copy()
+        for col in df_sql.columns:
+            if df_sql[col].dtype == 'object':
+                df_sql[col] = df_sql[col].astype(str)
+                
+        df_sql.to_sql('cyclones', conn, index=False, if_exists='replace')
 
         presets = {
             "Custom Query": "",
