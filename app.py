@@ -3,8 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-import folium
-from streamlit_folium import st_folium
+import pydeck as pdk
 
 # ==========================================
 # 1. PAGE CONFIGURATION
@@ -27,6 +26,15 @@ def load_data():
             df['Lat'] = df['Latitude']
         if 'Longitude' in df.columns and 'Lon' not in df.columns:
             df['Lon'] = df['Longitude']
+        
+        # Color Mapping for Pydeck (R, G, B, A)
+        # Red for high wind, Green for low wind
+        def get_color(wind):
+            if wind > 150: return [255, 0, 0, 160]   # Red
+            elif wind > 100: return [255, 165, 0, 160] # Orange
+            else: return [0, 255, 0, 160]              # Green
+            
+        df['color'] = df['Max_Wind_Speed'].apply(get_color)
         return df
     except FileNotFoundError:
         return None
@@ -67,46 +75,45 @@ else:
 # 4. HELPER FUNCTIONS
 # ==========================================
 
-def plot_odisha_map(df):
-    """Generates the interactive map focused on Odisha."""
-    odisha_lat_min, odisha_lat_max = 17.5, 22.5
-    odisha_lon_min, odisha_lon_max = 81.5, 87.5
+def render_pydeck_map(df):
+    """Generates the interactive map using Pydeck (No Folium)."""
     
-    # Base Map
-    m = folium.Map(location=[20.5, 84.5], zoom_start=7, tiles='CartoDB positron')
-    
-    # Odisha Boundary Box
-    folium.Rectangle(
-        bounds=[[odisha_lat_min, odisha_lon_min], [odisha_lat_max, odisha_lon_max]],
-        color="black", weight=2, fill=False, dash_array='5, 5', tooltip="Odisha Region"
-    ).add_to(m)
+    # Define the View State (Focused on Odisha)
+    view_state = pdk.ViewState(
+        latitude=20.5,
+        longitude=84.5,
+        zoom=6,
+        pitch=0,
+    )
 
-    if df.empty:
-        return m
+    # Layer 1: Scatterplot for Storm Points
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=df,
+        get_position='[Lon, Lat]',
+        get_color='color',
+        get_radius=20000,  # Radius in meters
+        pickable=True,
+        opacity=0.8,
+        stroked=True,
+        filled=True,
+        radius_scale=1,
+        radius_min_pixels=3,
+        radius_max_pixels=10,
+    )
 
-    # Plot Tracks
-    if selected_storm == 'All':
-        # Simplify view for 'All': Just dots
-        for _, row in df.iterrows():
-            folium.CircleMarker(
-                [row['Lat'], row['Lon']], radius=2, color='blue', opacity=0.5
-            ).add_to(m)
-    else:
-        # Detailed view for single storm
-        locations = list(zip(df['Lat'], df['Lon']))
-        folium.PolyLine(locations, color="red", weight=3, opacity=0.7).add_to(m)
-        
-        for _, row in df.iterrows():
-            color = 'green'
-            if row['Max_Wind_Speed'] > 150: color = 'red'
-            elif row['Max_Wind_Speed'] > 100: color = 'orange'
-            
-            folium.CircleMarker(
-                [row['Lat'], row['Lon']], radius=5, color=color, fill=True, 
-                popup=f"{row['Name']}: {row['Max_Wind_Speed']} km/h"
-            ).add_to(m)
+    # Tooltip Configuration
+    tooltip = {
+        "html": "<b>Storm:</b> {Name} <br/> <b>Wind:</b> {Max_Wind_Speed} km/h",
+        "style": {"backgroundColor": "steelblue", "color": "white"}
+    }
 
-    return m
+    st.pydeck_chart(pdk.Deck(
+        map_style='mapbox://styles/mapbox/light-v9',
+        initial_view_state=view_state,
+        layers=[layer],
+        tooltip=tooltip
+    ))
 
 def plot_ndvi_simulation(df, storm_name):
     """Simulates NDVI change using Matplotlib."""
@@ -176,9 +183,9 @@ with tab1:
 
 # --- TAB 2: MAP ANALYSIS ---
 with tab2:
-    st.subheader("Odisha Region Cyclone Tracks")
-    map_obj = plot_odisha_map(df_filtered)
-    st_folium(map_obj, width=800, height=500)
+    st.subheader("Odisha Region Cyclone Tracks (Pydeck)")
+    st.markdown("🔴 **Red:** Extreme Wind (>150 km/h) | 🟠 **Orange:** Severe | 🟢 **Green:** Moderate")
+    render_pydeck_map(df_filtered)
 
 # --- TAB 3: NDVI SIMULATION ---
 with tab3:
