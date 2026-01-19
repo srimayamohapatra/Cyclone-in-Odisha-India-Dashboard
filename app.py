@@ -17,7 +17,7 @@ except ImportError:
 
 # Suppress warnings
 warnings.filterwarnings('ignore')
-st.set_option('deprecation.showPyplotGlobalUse', False)
+
 
 # ==========================================
 # PAGE CONFIGURATION
