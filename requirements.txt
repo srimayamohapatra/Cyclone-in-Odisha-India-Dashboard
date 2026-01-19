@@ -1,6 +1,7 @@
-streamlit
 pandas
 matplotlib
 seaborn
-openpyxl
-Pillow
+ipywidgets
+folium
+voila
+numpy
