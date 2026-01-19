@@ -15,12 +15,14 @@ st.set_page_config(
 )
 
 # ==========================================
-# 2. DATA LOADING (Cached for Speed)
+# 2. DATA LOADING (UPDATED FOR EXCEL)
 # ==========================================
 @st.cache_data
 def load_data():
     try:
-        df = pd.read_csv('cyclone_data.csv')
+        # UPDATED: Now reads the specific Excel file shown in your screenshot
+        df = pd.read_excel('Cyclone.xlsx')
+        
         # Standardize column names
         if 'Latitude' in df.columns and 'Lat' not in df.columns:
             df['Lat'] = df['Latitude']
@@ -28,7 +30,6 @@ def load_data():
             df['Lon'] = df['Longitude']
         
         # Color Mapping for Pydeck (R, G, B, A)
-        # Red for high wind, Green for low wind
         def get_color(wind):
             if wind > 150: return [255, 0, 0, 160]   # Red
             elif wind > 100: return [255, 165, 0, 160] # Orange
@@ -37,6 +38,9 @@ def load_data():
         df['color'] = df['Max_Wind_Speed'].apply(get_color)
         return df
     except FileNotFoundError:
+        return None
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
         return None
 
 df_clean = load_data()
@@ -68,7 +72,7 @@ if df_clean is not None:
     if selected_storm != 'All':
         df_filtered = df_filtered[df_filtered['Name'] == selected_storm]
 else:
-    st.error("❌ 'cyclone_data.csv' not found. Please upload your dataset to the repository.")
+    st.error("❌ 'Cyclone.xlsx' not found. Please ensure the file is in your GitHub repository.")
     st.stop()
 
 # ==========================================
@@ -76,9 +80,7 @@ else:
 # ==========================================
 
 def render_pydeck_map(df):
-    """Generates the interactive map using Pydeck (No Folium)."""
-    
-    # Define the View State (Focused on Odisha)
+    """Generates the interactive map using Pydeck."""
     view_state = pdk.ViewState(
         latitude=20.5,
         longitude=84.5,
@@ -86,13 +88,12 @@ def render_pydeck_map(df):
         pitch=0,
     )
 
-    # Layer 1: Scatterplot for Storm Points
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=df,
         get_position='[Lon, Lat]',
         get_color='color',
-        get_radius=20000,  # Radius in meters
+        get_radius=20000,
         pickable=True,
         opacity=0.8,
         stroked=True,
@@ -102,7 +103,6 @@ def render_pydeck_map(df):
         radius_max_pixels=10,
     )
 
-    # Tooltip Configuration
     tooltip = {
         "html": "<b>Storm:</b> {Name} <br/> <b>Wind:</b> {Max_Wind_Speed} km/h",
         "style": {"backgroundColor": "steelblue", "color": "white"}
@@ -117,21 +117,17 @@ def render_pydeck_map(df):
 
 def plot_ndvi_simulation(df, storm_name):
     """Simulates NDVI change using Matplotlib."""
-    # Setup Grid
     lat_min, lat_max = 17.5, 22.5
     lon_min, lon_max = 81.5, 87.5
     grid_res = 0.05
     xx, yy = np.meshgrid(np.arange(lon_min, lon_max, grid_res), np.arange(lat_min, lat_max, grid_res))
     
-    # "Before" State
     np.random.seed(42)
     ndvi_before = 0.7 + np.random.normal(0, 0.05, xx.shape)
     ndvi_before = np.clip(ndvi_before, 0.0, 0.9)
     
-    # "After" State Calculation
     ndvi_after = ndvi_before.copy()
     
-    # Optimization: Subsample points if 'All' is selected to prevent timeout
     points_to_process = df if len(df) < 500 else df.sample(500)
 
     for _, row in points_to_process.iterrows():
@@ -143,7 +139,6 @@ def plot_ndvi_simulation(df, storm_name):
     
     ndvi_after = np.clip(ndvi_after, 0.05, 0.9)
 
-    # Plotting
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     
     im1 = axes[0].imshow(ndvi_before, extent=[lon_min, lon_max, lat_min, lat_max], origin='lower', cmap='RdYlGn', vmin=0, vmax=0.9)
@@ -162,10 +157,8 @@ def plot_ndvi_simulation(df, storm_name):
 st.title("🌪️ Cyclone Impact & Vegetation Dashboard")
 st.markdown("Analyze wind speeds, storm tracks, and simulated vegetation damage in the Odisha region.")
 
-# Create Tabs
 tab1, tab2, tab3 = st.tabs(["📊 Overview & Stats", "🗺️ Map Analysis", "📉 NDVI Simulation"])
 
-# --- TAB 1: OVERVIEW ---
 with tab1:
     col1, col2, col3 = st.columns(3)
     col1.metric("Selected Storms", len(df_filtered['Name'].unique()))
@@ -181,13 +174,11 @@ with tab1:
     st.subheader("Raw Data")
     st.dataframe(df_filtered)
 
-# --- TAB 2: MAP ANALYSIS ---
 with tab2:
     st.subheader("Odisha Region Cyclone Tracks (Pydeck)")
     st.markdown("🔴 **Red:** Extreme Wind (>150 km/h) | 🟠 **Orange:** Severe | 🟢 **Green:** Moderate")
     render_pydeck_map(df_filtered)
 
-# --- TAB 3: NDVI SIMULATION ---
 with tab3:
     st.subheader("Vegetation Health (NDVI) Impact Simulation")
     st.info("This model simulates vegetation loss based on wind intensity and proximity to the storm track.")
