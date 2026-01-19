@@ -3,5 +3,5 @@ matplotlib
 seaborn
 ipywidgets
 folium
-voila
 numpy
+voila
